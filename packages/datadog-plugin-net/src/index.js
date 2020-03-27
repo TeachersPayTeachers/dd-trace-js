@@ -30,7 +30,11 @@ function createWrapWrite (tracer, config) {
       if (!arguments[0]) return write.apply(this, arguments)
 
       // Not clear how to check if socket is IPC, so just assume TCP.
-      const span = wrapTcp(tracer, config, this, 'write', options, setupWriteListeners)
+      const span = wrapTcp(tracer, config, this, 'write', {
+        host: this.remoteAddress,
+        port: this.remotePort,
+        family: this.remoteFamily
+      }, setupWriteListeners)
 
       analyticsSampler.sample(span, config.analytics)
 
