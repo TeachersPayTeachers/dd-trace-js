@@ -23,7 +23,7 @@ function createWrapConnect (tracer, config) {
 }
 
 function createWrapWrite (tracer, config) {
-  return function wrapWrite (connect) {
+  return function wrapWrite (write) {
     return function writeWithTrace () {
       const scope = tracer.scope()
       const sanitizedArgs = sanitizeWriteArgs(arguments)
