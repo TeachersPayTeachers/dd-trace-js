@@ -103,28 +103,6 @@ function getConnectOptions (args) {
   }
 }
 
-function sanitizeWriteArgs (args) {
-  if (!args[0]) return
-
-  const data = args[0];
-  let encoding = 'utf8';
-  let callback = function() {}
-
-  for (let i = 1; i < args.length; i++) {
-    switch (typeof args[i]) {
-      case 'string':
-        encoding = args[i];
-        break;
-      default:
-        callback = args[i];
-        break;
-    }
-  }
-
-  return [data, encoding, callback];
-}
-
-
 function setupConnectListeners (socket, span, protocol) {
   const events = ['connect', 'error', 'close', 'timeout']
 
