@@ -28,9 +28,6 @@ function createWrapWrite (tracer, config) {
   return function wrapWrite (write) {
     return function writeWithTrace () {
       const scope = tracer.scope()
-      const sanitizedArgs = sanitizeWriteArgs(arguments)
-
-      if (!sanitizedArgs) return write.apply(this, arguments)
 
       // Not clear how to check if socket is IPC, so just assume TCP.
       const span = wrapTcp(tracer, config, this, 'write', {
@@ -39,11 +36,11 @@ function createWrapWrite (tracer, config) {
         family: this.remoteFamily
       }, () => {})
 
-      wrapWriteArgs(span, sanitizedArgs, () => {})
+      const wrappedArgs = wrapWriteArgs(span, arguments)
 
       analyticsSampler.sample(span, config.analytics)
 
-      return scope.bind(write, span).apply(this, sanitizedArgs)
+      return scope.bind(write, span).apply(this, wrappedArgs)
     }
   }
 }
@@ -112,29 +109,6 @@ function getConnectOptions (args) {
   }
 }
 
-function sanitizeWriteArgs (args) {
-  if (args.length == 0) {
-      return
-  }
-
-  const data = args[0];
-  let encoding = 'utf8';
-  let callback = noopCallback;
-
-  for (let i = 1; i < args.length; i++) {
-    switch (typeof args[i]) {
-      case 'string':
-        encoding = args[i];
-        break;
-      default:
-        callback = args[i];
-        break;
-    }
-  }
-
-  return [data, encoding, callback];
-}
-
 function setupConnectListeners (socket, span, protocol) {
   const events = ['connect', 'error', 'close', 'timeout']
 
@@ -166,14 +140,23 @@ function setupConnectListeners (socket, span, protocol) {
   })
 }
 
-function wrapWriteArgs (span, args, callback) {
-  const original = args[args.length - 1]
+function wrapWriteArgs (span, args) {
+  let wrappedArgs = args;
+
+  if(typeof wrappedArgs[wrappedArgs.length - 1] != 'function') {
+    wrappedArgs = Array.prototype.slice.call(args);
+    wrappedArgs.push(noopCallback);
+  }
+
+  const original = wrappedArgs[wrappedArgs.length - 1]
   const fn = tx.wrap(span, original)
 
-  args[args.length - 1] = function () {
-    callback && callback.apply(null, arguments)
+  wrappedArgs[wrappedArgs.length - 1] = function () {
+    console.log('Invoking wrapped callback'); 
     return fn.apply(this, arguments)
   }
+
+  return wrappedArgs;
 }
 
 module.exports = {
@@ -184,11 +167,11 @@ module.exports = {
     tracer.scope().bind(net.Socket.prototype)
 
     this.wrap(net.Socket.prototype, 'connect', createWrapConnect(tracer, config))
-//    this.wrap(net.Socket.prototype, 'write', createWrapWrite(tracer, config))
+    this.wrap(net.Socket.prototype, 'write', createWrapWrite(tracer, config))
   },
   unpatch (net, tracer) {
     tracer.scope().unbind(net.Socket.prototype)
 
-    this.unwrap(net.Socket.prototype, ['connect'/*, 'write'*/])
+    this.unwrap(net.Socket.prototype, ['connect', 'write'])
   }
 }
