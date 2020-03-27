@@ -3,8 +3,7 @@
 const RetryOperation = require('../operation')
 process.env.AWS_SECRET_ACCESS_KEY = '0000000000/00000000000000000000000000000'
 process.env.AWS_ACCESS_KEY_ID = '00000000000000000000'
-const { AWS } = require('../../../../../versions/aws-sdk@>=2.3.0').get()
-console.log(require('../../../../../versions/aws-sdk@>=2.3.0').get());
+const { AWS } = require('../../../../../versions/aws-sdk').get()
 
 function waitForAWS () {
   return new Promise((resolve, reject) => {
