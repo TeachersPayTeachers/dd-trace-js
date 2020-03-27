@@ -174,11 +174,12 @@ describe('Plugin', () => {
 
       agent
         .use(traces => {
+          //console.log('LOGGING TRACES: ' + JSON.stringify(traces));
           expect(traces[0][0]).to.deep.include({
             name: 'tcp.connect',
             service: 'test-tcp',
             resource: `localhost:${port}`
-          })
+          });
           expect(traces[0][0].meta).to.deep.include({
             'span.kind': 'client',
             'tcp.family': 'IPv4',
@@ -198,10 +199,17 @@ describe('Plugin', () => {
         .catch(done)
 
       tracer.scope().activate(parent, () => {
-        tcp.close()
-        socket.connect({ port })
-        socket.once('error', (err) => {
-          error = err
+        tcp.close((error) => {
+          if(error) {
+            console.log('Failed to close server: ' + JSON.stringify(error));
+          } else {
+            console.log('Successfully closed server');
+          }
+          socket.connect({ port })
+          socket.once('error', (err) => {
+            console.log('Got an error: ' + JSON.stringify(err));
+            error = err
+          })
         })
       })
     })

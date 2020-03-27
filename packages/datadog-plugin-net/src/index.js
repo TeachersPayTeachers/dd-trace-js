@@ -3,6 +3,8 @@
 const tx = require('../../dd-trace/src/plugins/util/tx')
 const analyticsSampler = require('../../dd-trace/src/analytics_sampler')
 
+const noopCallback = function() {}
+
 function createWrapConnect (tracer, config) {
   return function wrapConnect (connect) {
     return function connectWithTrace () {
@@ -26,19 +28,22 @@ function createWrapWrite (tracer, config) {
   return function wrapWrite (write) {
     return function writeWithTrace () {
       const scope = tracer.scope()
+      const sanitizedArgs = sanitizeWriteArgs(arguments)
 
-      if (!arguments[0]) return write.apply(this, arguments)
+      if (!sanitizedArgs) return write.apply(this, arguments)
 
       // Not clear how to check if socket is IPC, so just assume TCP.
       const span = wrapTcp(tracer, config, this, 'write', {
         host: this.remoteAddress,
         port: this.remotePort,
         family: this.remoteFamily
-      }, setupWriteListeners)
+      }, () => {})
+
+      wrapWriteArgs(span, sanitizedArgs, () => {})
 
       analyticsSampler.sample(span, config.analytics)
 
-      return scope.bind(write, span).apply(this, arguments)
+      return scope.bind(write, span).apply(this, sanitizedArgs)
     }
   }
 }
@@ -107,6 +112,29 @@ function getConnectOptions (args) {
   }
 }
 
+function sanitizeWriteArgs (args) {
+  if (args.length == 0) {
+      return
+  }
+
+  const data = args[0];
+  let encoding = 'utf8';
+  let callback = noopCallback;
+
+  for (let i = 1; i < args.length; i++) {
+    switch (typeof args[i]) {
+      case 'string':
+        encoding = args[i];
+        break;
+      default:
+        callback = args[i];
+        break;
+    }
+  }
+
+  return [data, encoding, callback];
+}
+
 function setupConnectListeners (socket, span, protocol) {
   const events = ['connect', 'error', 'close', 'timeout']
 
@@ -138,35 +166,14 @@ function setupConnectListeners (socket, span, protocol) {
   })
 }
 
-function setupWriteListeners (socket, span, protocol) {
-  const events = ['drain']
+function wrapWriteArgs (span, args, callback) {
+  const original = args[args.length - 1]
+  const fn = tx.wrap(span, original)
 
-  const wrapListener = tx.wrap(span)
-
-  const localListener = () => {
-    span.addTags({
-      'tcp.local.address': socket.localAddress,
-      'tcp.local.port': socket.localPort
-    })
+  args[args.length - 1] = function () {
+    callback && callback.apply(null, arguments)
+    return fn.apply(this, arguments)
   }
-
-  const cleanupListener = () => {
-    socket.removeListener('drain', localListener)
-
-    events.forEach(event => {
-      socket.removeListener(event, wrapListener)
-      socket.removeListener(event, cleanupListener)
-    })
-  }
-
-  if (protocol === 'tcp') {
-    socket.once('drain', localListener)
-  }
-
-  events.forEach(event => {
-    socket.once(event, wrapListener)
-    socket.once(event, cleanupListener)
-  })
 }
 
 module.exports = {
@@ -177,12 +184,11 @@ module.exports = {
     tracer.scope().bind(net.Socket.prototype)
 
     this.wrap(net.Socket.prototype, 'connect', createWrapConnect(tracer, config))
-    this.wrap(net.Socket.prototype, 'write', createWrapWrite(tracer, config))
+//    this.wrap(net.Socket.prototype, 'write', createWrapWrite(tracer, config))
   },
   unpatch (net, tracer) {
     tracer.scope().unbind(net.Socket.prototype)
 
-    this.unwrap(net.Socket.prototype, 'connect')
-    this.unwrap(net.Socket.prototype, 'write')
+    this.unwrap(net.Socket.prototype, ['connect'/*, 'write'*/])
   }
 }
