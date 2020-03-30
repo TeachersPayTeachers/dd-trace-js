@@ -148,13 +148,10 @@ function wrapWriteArgs (span, args) {
     wrappedArgs.push(noopCallback);
   }
 
-  const original = wrappedArgs[wrappedArgs.length - 1]
-  const fn = tx.wrap(span, original)
+  const originalCallback = wrappedArgs[wrappedArgs.length - 1]
+  const wrappedCallback = tx.wrap(span, originalCallback)
 
-  wrappedArgs[wrappedArgs.length - 1] = function () {
-    console.log('Invoking wrapped callback'); 
-    return fn.apply(this, arguments)
-  }
+  wrappedArgs[wrappedArgs.length - 1] = wrappedCallback
 
   return wrappedArgs;
 }
